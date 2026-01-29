@@ -1,74 +1,61 @@
 import streamlit as st
 import pandas as pd
 
-# ---------------------------------
-# Page Setup
-# ---------------------------------
-st.set_page_config(page_title="Real Job Search System", layout="wide")
-st.title("🇮🇳 Real Job Search System")
-st.write(
-    "Browse real jobs using **normalized job roles**, location, and category. "
-    "Internships are shown separately for freshers."
+# -------------------------------------------------
+# Page config
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Real Job Search System",
+    page_icon="💼",
+    layout="wide"
 )
 
-# ---------------------------------
-# Load Jobs
-# ---------------------------------
-jobs_df = pd.read_csv("all_real_jobs.csv")
-jobs_df = jobs_df.fillna("")
+# -------------------------------------------------
+# Load data
+# -------------------------------------------------
+@st.cache_data
+def load_jobs():
+    df = pd.read_csv("all_jobs.csv")
+    df = df.fillna("")
+    return df
 
-# ---------------------------------
-# STRICT INTERNSHIP DETECTION (TITLE ONLY)
-# ---------------------------------
+jobs_df = load_jobs()
+
+# -------------------------------------------------
+# Internship detection (STRICT – title only)
+# -------------------------------------------------
 def is_internship(title):
     title = title.lower()
     return any(k in title for k in ["intern", "internship", "trainee"])
 
 jobs_df["is_internship"] = jobs_df["job_title"].apply(is_internship)
 
-# ---------------------------------
-# ROLE NORMALIZATION (KEY FIX)
-# ---------------------------------
+# -------------------------------------------------
+# Role normalization
+# -------------------------------------------------
 ROLE_MAP = {
-    "Data Science": [
-        "data scientist", "machine learning", "ml engineer", "ai", "applied scientist"
-    ],
-    "Software Engineer": [
-        "software engineer", "sde", "developer", "programmer"
-    ],
-    "Backend": [
-        "backend", "api", "microservice"
-    ],
-    "Frontend": [
-        "frontend", "ui", "react", "angular"
-    ],
-    "DevOps": [
-        "devops", "cloud", "aws", "docker", "kubernetes"
-    ],
-    "Data Analyst": [
-        "data analyst", "analytics", "sql", "business analyst"
-    ],
-    "QA / Testing": [
-        "qa", "test", "quality assurance"
-    ],
-    "Internship": [
-        "intern", "internship", "trainee"
-    ]
+    "Software Engineer": ["software engineer", "sde", "developer", "programmer"],
+    "Backend Engineer": ["backend", "api", "microservice"],
+    "Frontend Engineer": ["frontend", "react", "angular", "ui"],
+    "Data Scientist": ["data scientist", "machine learning", "ml", "ai"],
+    "Data Analyst": ["data analyst", "analytics", "sql"],
+    "DevOps / Cloud": ["devops", "aws", "cloud", "docker", "kubernetes"],
+    "QA / Testing": ["qa", "test", "quality"],
+    "Internship": ["intern", "internship", "trainee"]
 }
 
 def normalize_role(title):
-    title = title.lower()
-    for role, keywords in ROLE_MAP.items():
-        for k in keywords:
-            if k in title:
-                return role
+    t = title.lower()
+    for role, keys in ROLE_MAP.items():
+        if any(k in t for k in keys):
+            return role
     return "Other"
 
 jobs_df["normalized_role"] = jobs_df["job_title"].apply(normalize_role)
 
-# ---------------------------------
-# SEARCH TEXT (FREE SEARCH)
-# ---------------------------------
+# -------------------------------------------------
+# Search text
+# -------------------------------------------------
 jobs_df["search_text"] = (
     jobs_df["job_title"] + " "
     + jobs_df["company"] + " "
@@ -76,96 +63,123 @@ jobs_df["search_text"] = (
     + jobs_df["normalized_role"]
 ).str.lower()
 
-# ---------------------------------
-# SIDEBAR FILTERS
-# ---------------------------------
-st.sidebar.header("Filters")
-
-# Category
-view = st.sidebar.radio(
-    "Category",
-    ["All Jobs", "Internships (Freshers)", "Experienced Jobs"]
+# -------------------------------------------------
+# Header
+# -------------------------------------------------
+st.markdown("## 💼 Real Job Search System")
+st.caption(
+    "Live jobs fetched daily from company career pages (Greenhouse & Lever). "
+    "Click a job to apply on the official website."
 )
 
-# NORMALIZED JOB ROLE FILTER (FIXED)
-roles = sorted(jobs_df["normalized_role"].unique())
-selected_role = st.sidebar.selectbox(
+# -------------------------------------------------
+# Tabs
+# -------------------------------------------------
+tab_all, tab_intern = st.tabs(["All Jobs", "Internships"])
+
+# -------------------------------------------------
+# Sidebar filters
+# -------------------------------------------------
+st.sidebar.header("🔍 Filters")
+
+role_filter = st.sidebar.selectbox(
     "Job Role",
-    ["All"] + roles
+    ["All"] + sorted(jobs_df["normalized_role"].unique())
 )
 
-# Location
-locations = sorted(jobs_df["location"].unique())
-selected_location = st.sidebar.selectbox(
+location_filter = st.sidebar.selectbox(
     "Location",
-    ["All"] + locations
+    ["All"] + sorted(jobs_df["location"].unique())
 )
 
-# Search box
-query = st.text_input(
-    "🔍 Search (role / company / location)"
+search_query = st.sidebar.text_input(
+    "Search (role / company / location)"
 ).lower()
 
-# ---------------------------------
-# FILTERING LOGIC
-# ---------------------------------
-filtered_df = jobs_df.copy()
+# -------------------------------------------------
+# Filtering function
+# -------------------------------------------------
+def apply_filters(df):
+    if role_filter != "All":
+        df = df[df["normalized_role"] == role_filter]
 
-# Category filter
-if view == "Internships (Freshers)":
-    st.info(
-        "Showing only roles that explicitly mention **intern / internship / trainee** "
-        "in the job title."
-    )
-    filtered_df = filtered_df[filtered_df["is_internship"] == True]
+    if location_filter != "All":
+        df = df[df["location"] == location_filter]
 
-elif view == "Experienced Jobs":
-    filtered_df = filtered_df[filtered_df["is_internship"] == False]
+    if search_query:
+        df = df[df["search_text"].str.contains(search_query, na=False)]
 
-# Normalized role filter
-if selected_role != "All":
-    filtered_df = filtered_df[
-        filtered_df["normalized_role"] == selected_role
-    ]
+    return df
 
-# Location filter
-if selected_location != "All":
-    filtered_df = filtered_df[
-        filtered_df["location"] == selected_location
-    ]
+# -------------------------------------------------
+# Job card renderer
+# -------------------------------------------------
+def render_job_cards(df):
+    if df.empty:
+        st.warning("No jobs found.")
+        return
 
-# Search filter
-if query:
-    filtered_df = filtered_df[
-        filtered_df["search_text"].str.contains(query, na=False)
-    ]
-
-# ---------------------------------
-# DISPLAY JOB CARDS
-# ---------------------------------
-st.write(f"### Showing {len(filtered_df)} jobs")
-
-if filtered_df.empty:
-    st.warning("No jobs found.")
-else:
-    for _, row in filtered_df.iterrows():
+    for _, row in df.iterrows():
         with st.container():
-            st.markdown(
-                f"""
-                ### {row['job_title']}
-                🏢 **{row['company']}**  
-                📍 {row['location']}  
-                🧭 Role: *{row['normalized_role']}*
+            col1, col2 = st.columns([5, 1])
 
-                🔗 [Apply on Company Website]({row['link']})
-                """
-            )
+            with col1:
+                st.markdown(
+                    f"""
+                    ### {row['job_title']}
+                    **{row['company']}**  
+                    📍 {row['location']}  
+                    🧭 {row['normalized_role']}  
+                    🏷 Source: {row.get("source", "ATS").title()}
+                    """
+                )
+
+            with col2:
+                st.markdown(
+                    f"""
+                    <a href="{row['link']}" target="_blank">
+                        <button style="
+                            background-color:#2563EB;
+                            color:white;
+                            padding:10px 16px;
+                            border:none;
+                            border-radius:6px;
+                            cursor:pointer;
+                        ">
+                        Apply
+                        </button>
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
+
             st.markdown("---")
 
-# ---------------------------------
-# FOOTER
-# ---------------------------------
+# -------------------------------------------------
+# All Jobs tab
+# -------------------------------------------------
+with tab_all:
+    filtered = apply_filters(jobs_df)
+    st.subheader(f"📄 Showing {len(filtered)} jobs")
+    render_job_cards(filtered)
+
+# -------------------------------------------------
+# Internship tab
+# -------------------------------------------------
+with tab_intern:
+    st.info(
+        "Showing only roles that explicitly mention **Intern / Internship / Trainee** "
+        "in the job title."
+    )
+    intern_df = jobs_df[jobs_df["is_internship"] == True]
+    intern_df = apply_filters(intern_df)
+    st.subheader(f"🎓 Showing {len(intern_df)} internships")
+    render_job_cards(intern_df)
+
+# -------------------------------------------------
+# Footer
+# -------------------------------------------------
 st.caption(
-    "Jobs are grouped using normalized roles. "
-    "Internships are shown only when explicitly stated in job titles."
+    "⚠️ This platform is a job discovery tool. "
+    "All applications redirect to official company career pages."
 )
