@@ -1,0 +1,37 @@
+name: Daily Job Update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # Runs daily at 8:30 AM IST
+  workflow_dispatch:      # Allows manual run
+
+jobs:
+  update-jobs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas requests
+
+      - name: Fetch Greenhouse jobs
+        run: python greenhouse_fetcher.py
+
+      - name: Fetch Lever jobs
+        run: python lever_fetch.py
+
+      - name: Commit updated CSV files
+        run: |
+          git config user.name "job-bot"
+          git config user.email "job-bot@github.com"
+          git add greenhouse.csv lever.csv
+          git commit -m "Daily job update" || echo "No changes"
+          git push
