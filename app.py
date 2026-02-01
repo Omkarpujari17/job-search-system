@@ -13,9 +13,9 @@ st.set_page_config(
 # -------------------------------------------------
 # Load data
 # -------------------------------------------------
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_jobs():
-    df = pd.read_csv("all_real_jobs.csv")
+    df = pd.read_csv("all_jobs.csv")
     df = df.fillna("")
     return df
 
