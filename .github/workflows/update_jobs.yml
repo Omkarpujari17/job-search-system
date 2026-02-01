@@ -54,10 +54,16 @@ jobs:
       # -----------------------------
       # Commit & push updated CSVs
       # -----------------------------
-      - name: Commit updated job files
+            - name: Commit updated job files
         run: |
           git config user.name "job-bot"
           git config user.email "job-bot@github.com"
+
+          git fetch origin main
+          git rebase origin/main || git rebase --abort
+
           git add greenhouse.csv lever.csv all_jobs.csv
           git commit -m "Daily job update" || echo "No changes to commit"
-          git push
+
+          git push origin main
+
